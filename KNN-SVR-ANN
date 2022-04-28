@@ -1,0 +1,272 @@
+
+## Dataset
+# KNN
+
+df <- Hitters
+
+df <- na.omit(df)
+df <- df %>% dplyr::select(-c("League","NewLeague","Division"))
+
+rownames(df) <- c()
+
+set.seed(3456)
+train_indeks <- createDataPartition(df$Salary, 
+                                    p = .8, 
+                                    list = FALSE, 
+                                    times = 1)
+head(train_indeks)
+
+train <- df[train_indeks, ]
+test <- df[-train_indeks, ]
+train_x <- train %>% dplyr::select(-Salary)
+train_y <- train$Salary
+test_x <- test %>% dplyr::select(-Salary)
+test_y <- test$Salary
+
+# a single dataset
+training <- data.frame(train_x, Salary = train_y)
+
+## Model
+knn_fit <- knn.reg(train = train_x, 
+                   test = test_x, 
+                   y = train_y, 
+                   k = 2)
+
+names(knn_fit)
+
+head(knn_fit$pred)
+
+
+## Predict
+knn_fit <- knn.reg(train = train_x, 
+                   test = test_x, 
+                   y = train_y, 
+                   k = 2)
+
+defaultSummary(data.frame(obs = test_y, pred = knn_fit$pred))
+
+## Model Tuning
+ctrl <- trainControl(method = "cv", number = 10)
+
+knn_grid <- data.frame(k = 1:20)
+
+knn_tune <- train(train_x, train_y,
+                  method = "knn",
+                  trControl = ctrl,
+                  tuneGrid = knn_grid,
+                  preProc = c("center", "scale"))
+
+
+plot(knn_tune)
+
+knn_tune$finalModel
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(knn_tune, test_x)))
+
+
+# SVR
+##Model
+svm_fit <- svm(train_x, train_y)
+names(svm_fit)
+
+# predict
+predict(svm_fit, test_x)
+defaultSummary(data.frame(obs = test_y,
+pred = predict(svm_fit, test_x)))
+
+# Model Tuning
+ctrl <- trainControl(method = "cv", number = 10)
+
+svm_tune <- train(train_x, train_y,
+                  method = "svmRadial",
+                  trControl = ctrl,
+                  tuneLength = 14,
+                  preProc = c("center", "scale"))
+
+plot(svm_tune)
+
+svm_tune$finalModel
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(svm_tune, test_x)))
+
+
+## Artificial Neural Network
+dff <- read_table(file = 'http://archive.ics.uci.edu/ml/machine-learning-databases/00243/yacht_hydrodynamics.data',
+col_names = c('longpos_cob', 
+              'prismatic_coeff', 
+              'len_disp_ratio', 
+              'beam_draut_ratio', 
+              'length_beam_ratio',
+              'froude_num', 
+              'residuary_resist'))
+              
+glimpse(dff)
+profiling_num(dff)
+ggpairs(dff)
+mean(dff$residuary_resist)              
+
+olcek <- function(x) {
+  
+  (x-min(x)) / (max(x) - min(x))
+  
+}
+
+df <- na.omit(dff)
+
+df <- df %>% mutate_all(olcek)
+
+set.seed(3456)
+train_indeks <- createDataPartition(df$residuary_resist, 
+                                  p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+
+
+train <- df[train_indeks,]
+test  <- df[-train_indeks,]
+
+
+train_x <- train %>% dplyr::select(-residuary_resist)
+train_y <- train$residuary_resist
+test_x <- test %>% dplyr::select(-residuary_resist)
+test_y <- test$residuary_resist
+
+
+training <- data.frame(train_x, residuary_resist = train_y)
+
+df
+
+## Model
+# Simple Artificial Nerve Cell with 1 Layer and 1 Neuron
+ysa_formul <- residuary_resist ~ longpos_cob + prismatic_coeff + len_disp_ratio + beam_draut_ratio + length_beam_ratio + froude_num
+
+ysa1 <- neuralnet(ysa_formul, data = training)
+
+
+plot(ysa1)
+
+ysa1$result.matrix
+
+# Increasing the Number of Layers and Norons
+plot(neuralnet(ysa_formul, data = training, 
+               hidden = 5),rep =  "best")
+
+
+ysa2 <- neuralnet(ysa_formul, data = training, 
+               hidden = 5)
+
+ysa3 <- neuralnet(ysa_formul, data = training, 
+               hidden = c(3,2))
+
+
+# Variable Significance and Impact Levels
+garson(ysa2)
+
+lekprofile(ysa2)
+
+
+# Undo the Conversion
+dff <- read_table(file = 'http://archive.ics.uci.edu/ml/machine-learning-databases/00243/yacht_hydrodynamics.data',
+col_names = c('longpos_cob', 
+              'prismatic_coeff', 
+              'len_disp_ratio', 
+              'beam_draut_ratio', 
+              'length_beam_ratio',
+              'froude_num', 
+              'residuary_resist')) 
+
+dff <- na.omit(dff)
+set.seed(3456)
+train_indeks <- createDataPartition(dff$residuary_resist, 
+                                  p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+
+
+train <- dff[train_indeks,]
+test  <- dff[-train_indeks,]
+
+
+train_x <- train %>% dplyr::select(-residuary_resist)
+train_y <- train$residuary_resist
+test_x <- test %>% dplyr::select(-residuary_resist)
+test_y <- test$residuary_resist
+
+
+training <- data.frame(train_x, residuary_resist = train_y)
+
+# Predict
+defaultSummary(data.frame(obs = test_y, 
+                          pred = predict(ysa1, test_x)))
+
+
+
+
+# Model Tuning
+#Multi-Layer Perceptron
+ctrl <- trainControl(method = "cv", number = 10)
+
+ysa_grid <- expand.grid(
+            decay = c(0.001,0.01, 0.1),
+            size =  (1:10))
+
+ysa_tune <- train(train_x, train_y,
+                  method = "mlpWeightDecay",
+                  trControl = ctrl,
+                  tuneGrid = ysa_grid,
+                  preProc = c("center", "scale"))
+
+plot(ysa_tune)
+
+ysa_tune$bestTune
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(ysa_tune, test_x)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
