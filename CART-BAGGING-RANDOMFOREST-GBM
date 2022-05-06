@@ -1,0 +1,375 @@
+# CART 
+
+Regresyon Agaclari
+
+## DATASET
+df <- Advertising
+df = df[,2:length(df)]
+
+# model building
+
+cart_tree <- rpart(sales ~ ., data = df)
+
+names(cart_tree)
+cart_tree$variable.importance
+
+plot(cart_tree, margin = 0.1)
+text(cart_tree, cex = 0.5)
+prp(cart_tree, type = 4)
+rpart.plot(cart_tree)
+plotcp(cart_tree)
+
+
+## Display on Axes
+df %>% mutate(y_sapka = predict(cart_tree)) %>%
+  ggplot() +
+  geom_point(aes(TV, sales)) +
+  geom_step(aes(TV, y_sapka), col = "red")
+  
+  
+# Complexity Parameter and minsplit
+
+cart_tree <- rpart(sales ~ ., data = df,
+                   control = rpart.control(cp = 0.06, 
+                                           minsplit = 3))
+
+df %>% mutate(y_sapka = predict(cart_tree)) %>%
+  ggplot() +
+  geom_point(aes(TV, sales)) +
+  geom_step(aes(TV, y_sapka), col = "red")
+  
+  
+  
+  prune_cart <- prune(cart_tree, cp = 0.01)
+
+
+df %>% mutate(y_sapka = predict(prune_cart)) %>%
+  ggplot() +
+  geom_point(aes(TV, sales)) +
+  geom_step(aes(TV, y_sapka), col = "red")
+
+plot(prune_cart, margin = 0.1)
+text(prune_cart, cex = 0.5)
+  
+  
+  
+ ## Predict 
+  
+head(predict(prune_cart))
+
+defaultSummary(data.frame(obs = df$sales,
+pred = predict(cart_tree)))
+  
+  
+# Model Tuning
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+tune_grid <- data.frame(
+  cp = seq(0, 0.05, len = 25)
+  
+)
+
+cart_tune <- train(sales~.,
+                  method = "rpart",
+                  trControl = ctrl,
+                  tuneGrid = tune_grid,
+                  preProc = c("center", "scale"), data = df)
+
+cart_tune
+
+plot(cart_tune)
+
+cart_tune$bestTune
+cart_tune$finalModel
+
+plot(cart_tune$finalModel)
+text(cart_tune$finalModel)
+
+plot(predict(cart_tune), df$sales, xlab = "Tahmin",ylab = "Gercek")
+abline(0,1)
+
+
+plot(as.party(cart_tree))
+
+
+defaultSummary(data.frame(obs = df$sales,
+pred = predict(cart_tune)))
+  
+  
+  
+  
+## BAGGING REGRESSION
+
+data(Boston) 
+
+df <- Boston
+
+head(df)
+glimpse(df)
+
+set.seed(3456)
+train_indeks <- createDataPartition(df$medv, 
+                                  p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+
+
+train <- df[train_indeks,]
+test  <- df[-train_indeks,]
+
+
+train_x <- train %>% dplyr::select(-medv)
+train_y <- train$medv
+test_x <- test %>% dplyr::select(-medv)
+test_y <- test$medv
+
+training <- data.frame(train_x, medv = train_y)  
+  
+  
+  # Model
+  
+  bag_fit <- ipredbagg(train_y, train_x)
+bag_fit
+
+bag_fit <- bagging(medv~ ., data = training)
+
+names(bag_fit)
+
+bag_fit$mtrees
+
+bag_fit <- randomForest(training$medv ~ . , data = training,
+             mtry = ncol(training) - 1,
+             importance = TRUE,
+             ntrees = 500
+             )
+
+bag_fit
+summary(training$medv)
+importance(bag_fit)
+varImpPlot(bag_fit)
+
+
+# Predict
+
+predict(bag_fit, test_x)
+
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(bag_fit, test_x)))
+
+
+plot(bag_fit, col = "dodgerblue", 
+     lwd = 2, 
+     main = "Bagged Trees: Hata ve Agac Sayisi Karsilastirimasi")
+grid()
+
+# Model Tuning
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+mtry <- ncol(train_x)
+tune_grid <- expand.grid(mtry = mtry)
+
+
+
+bag_tune <- train(train_x, train_y, 
+                  method = "rf", 
+                  tuneGrid = tune_grid,
+                  trControl = ctrl)
+
+
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(bag_tune, test_x)))
+
+
+## Random Forests Regression
+
+
+# Model
+
+rf_fit <- randomForest(train_x, train_y, importance = TRUE)
+
+importance(rf_fit)
+varImpPlot(rf_fit)
+
+
+rf_fit
+
+# Predict
+
+predict(rf_fit, test_x )
+
+plot(predict(rf_fit, test_x), test_y,
+     xlab = "Tahmin Edilen", ylab = "Gercek",
+     main = "Tahmin Edilen vs Gercek: Random Forest",
+     col = "dodgerblue", pch = 20)
+
+grid()
+abline(0, 1, col = "darkorange", lwd = 2)
+
+
+defaultSummary(data.frame(obs = test_y,
+pred = predict(rf_fit, test_x)))
+
+#Model Tuning
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+
+ncol(train_x)/3
+
+tune_grid <- expand.grid(mtry = c(2,3,4,5,10))
+rf_tune <- train( train_x, train_y,
+                  method = "rf",
+                  tuneGrid = tune_grid,
+                  trControl = ctrl
+
+)
+
+rf_tune
+plot(rf_tune)
+
+rf_tune$results %>% filter(mtry == as.numeric(rf_tune$bestTune))
+
+defaultSummary(data.frame(obs = test_y, 
+                            pred = predict(rf_tune, test_x)))
+
+  
+## Random Search with Caret
+
+ctrl <- trainControl(method = "cv", 
+                     number = 10,
+                     search = "random")
+
+rf_random_tune <- train( train_x, train_y,
+                  method = "rf",
+                  tuneLength = 5,
+                  trControl = ctrl
+
+)
+
+rf_random_tune
+
+## Grid Search with Caret
+  
+ctrl <- trainControl(method = "cv", 
+                     number = 10,
+                     search = "grid")
+
+tune_grid <- expand.grid(mtry = c(1:10))
+
+rf_random_tune <- train(train_x, train_y,
+                  method = "rf",
+                  tuneGrid = tune_grid,
+                  trControl = ctrl
+
+)
+
+
+
+model_listesi <- list()
+
+for (ntree in c(100, 200, 300, 500, 1000, 2000)) {
+  
+  set.seed(123)
+  
+  fit <- train(train_x, train_y,
+                  method = "rf",
+                  tuneGrid = tune_grid,
+                  trControl = ctrl, 
+                  ntree = ntree)
+
+  key <- toString(ntree)
+  model_listesi[[key]] <- fit
+  
+}
+
+sonuclar <- resamples(model_listesi)
+summary(sonuclar)  
+  
+  
+  
+## GBM
+
+# Model
+
+gbm_fit <- gbm(medv ~ ., data = training ,
+    distribution = "gaussian", 
+    n.trees = 5000,
+    interaction.depth = 1,
+    shrinkage = 0.01,
+    cv.folds = 5)
+
+summary(gbm_fit)
+
+names(gbm_fit)
+
+gbm.perf(gbm_fit, method = "cv")
+
+
+
+defaultSummary(data.frame(obs = train_y, 
+                            pred = gbm_fit$fit))
+  
+  
+  
+# Predict
+
+predict(gbm_fit, test_x, n.trees = 5000)
+
+
+defaultSummary(data.frame(obs = test_y, 
+                            pred = predict(gbm_fit, test_x, n.trees = 1000)))
+
+
+plot(predict(gbm_fit, test_x, n.trees = 5000), test_y,
+     xlab = "Tahmin Edilen", ylab = "Gercek",
+     main = "Tahmin Edilen vs Gercek: GBM",
+     col = "dodgerblue", pch = 20)
+
+grid()
+
+abline(0, 1, col = "darkorange", lwd = 2)
+  
+  
+# Model Tuning
+
+ctrl <- trainControl(method = "cv", 10,
+                     search = "grid")
+
+
+gbm_grid <- expand.grid(
+            interaction.depth = seq(1, 7, by = 2),
+            n.trees = seq(100, 1000, by = 50),
+            shrinkage = c(0.01, 0.1),
+            n.minobsinnode = c(10:20))
+
+
+gbm_tune_fit <- train(train_x, train_y, 
+      method = "gbm",
+      trControl = ctrl,
+      tuneGrid = gbm_grid,
+      verbose = FALSE
+      )
+
+
+plot(gbm_tune_fit)
+gbm_tune_fit$finalModel
+
+gbm_tune_fit$results %>% 
+  filter(n.trees == as.numeric(gbm_tune_fit$bestTune$n.trees) &
+         interaction.depth == as.numeric(gbm_tune_fit$bestTune$interaction.depth) &
+         shrinkage == as.numeric(gbm_tune_fit$bestTune$shrinkage) &
+        n.minobsinnode == as.numeric(gbm_tune_fit$bestTune$n.minobsinnode))
+
+
+defaultSummary(data.frame(obs = test_y, 
+                            pred = predict(gbm_tune_fit, test_x)))
+  
+  
+  
+  
+  
+  
